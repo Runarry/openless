@@ -30,6 +30,9 @@ pub(crate) fn asr_configured_for_provider(provider: &str, snap: &CredentialsSnap
     if provider == "volcengine" {
         return volcengine_configured(snap);
     }
+    if provider == crate::asr::volcengine::AGENT_PLAN_PROVIDER_ID {
+        return configured(&snap.asr_api_key);
+    }
     if cfg!(mobile)
         && (provider == crate::asr::local::PROVIDER_ID
             || provider == crate::asr::local::sherpa::PROVIDER_ID

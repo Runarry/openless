@@ -24,7 +24,10 @@ use uuid::Uuid;
 use super::frame::{self, Flags, MessageType, Serialization};
 use super::{AudioConsumer, DictionaryHotword, RawTranscript};
 
-const ENDPOINT: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
+pub const PROVIDER_ID: &str = "volcengine";
+pub const AGENT_PLAN_PROVIDER_ID: &str = "volcengine-agent-plan";
+const LEGACY_ENDPOINT: &str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
+const AGENT_PLAN_ENDPOINT: &str = "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async";
 /// 200 ms of 16 kHz / 16-bit / mono PCM.
 const TARGET_AUDIO_CHUNK_BYTES: usize = 6_400;
 /// 16 kHz · 16-bit · mono = 32 000 bytes/sec → 32 bytes/ms.
@@ -34,14 +37,62 @@ const FINAL_RESULT_TIMEOUT: Duration = Duration::from_secs(12);
 
 #[derive(Clone, Debug)]
 pub struct VolcengineCredentials {
-    pub app_id: String,
-    pub access_token: String,
-    pub resource_id: String,
+    pub endpoint: String,
+    pub auth: VolcengineAuth,
+}
+
+#[derive(Clone, Debug)]
+pub enum VolcengineAuth {
+    Legacy {
+        app_id: String,
+        access_token: String,
+        resource_id: String,
+    },
+    AgentPlan {
+        api_key: String,
+        resource_id: String,
+    },
 }
 
 impl VolcengineCredentials {
+    pub fn legacy(app_id: String, access_token: String, resource_id: String) -> Self {
+        Self {
+            endpoint: LEGACY_ENDPOINT.to_string(),
+            auth: VolcengineAuth::Legacy {
+                app_id,
+                access_token,
+                resource_id,
+            },
+        }
+    }
+
+    pub fn agent_plan(api_key: String, resource_id: String) -> Self {
+        Self {
+            endpoint: AGENT_PLAN_ENDPOINT.to_string(),
+            auth: VolcengineAuth::AgentPlan {
+                api_key,
+                resource_id,
+            },
+        }
+    }
+
     pub fn default_resource_id() -> &'static str {
         "volc.seedasr.sauc.duration"
+    }
+
+    pub(crate) fn missing_required_credentials(&self) -> bool {
+        match &self.auth {
+            VolcengineAuth::Legacy {
+                app_id,
+                access_token,
+                resource_id,
+            } => {
+                app_id.trim().is_empty()
+                    || access_token.trim().is_empty()
+                    || resource_id.trim().is_empty()
+            }
+            VolcengineAuth::AgentPlan { api_key, .. } => api_key.trim().is_empty(),
+        }
     }
 }
 
@@ -123,33 +174,58 @@ impl VolcengineStreamingASR {
     }
 
     pub async fn open_session(self: &Arc<Self>) -> Result<(), VolcengineASRError> {
-        if self.credentials.app_id.is_empty()
-            || self.credentials.access_token.is_empty()
-            || self.credentials.resource_id.is_empty()
-        {
+        if self.credentials.missing_required_credentials() {
             return Err(VolcengineASRError::CredentialsMissing);
         }
 
         let connect_id = Uuid::new_v4().to_string();
-        let mut request = ENDPOINT
+        let mut request = self
+            .credentials
+            .endpoint
+            .as_str()
             .into_client_request()
             .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?;
         let headers = request.headers_mut();
-        headers.insert(
-            "X-Api-App-Key",
-            HeaderValue::from_str(&self.credentials.app_id)
-                .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
-        );
-        headers.insert(
-            "X-Api-Access-Key",
-            HeaderValue::from_str(&self.credentials.access_token)
-                .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
-        );
-        headers.insert(
-            "X-Api-Resource-Id",
-            HeaderValue::from_str(&self.credentials.resource_id)
-                .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
-        );
+        match &self.credentials.auth {
+            VolcengineAuth::Legacy {
+                app_id,
+                access_token,
+                resource_id,
+            } => {
+                headers.insert(
+                    "X-Api-App-Key",
+                    HeaderValue::from_str(app_id.trim())
+                        .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
+                );
+                headers.insert(
+                    "X-Api-Access-Key",
+                    HeaderValue::from_str(access_token.trim())
+                        .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
+                );
+                headers.insert(
+                    "X-Api-Resource-Id",
+                    HeaderValue::from_str(resource_id.trim())
+                        .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
+                );
+            }
+            VolcengineAuth::AgentPlan {
+                api_key,
+                resource_id,
+            } => {
+                headers.insert(
+                    "X-Api-Key",
+                    HeaderValue::from_str(api_key.trim())
+                        .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
+                );
+                if !resource_id.trim().is_empty() {
+                    headers.insert(
+                        "X-Api-Resource-Id",
+                        HeaderValue::from_str(resource_id.trim())
+                            .map_err(|e| VolcengineASRError::ConnectionFailed(e.to_string()))?,
+                    );
+                }
+            }
+        }
         headers.insert(
             "X-Api-Connect-Id",
             HeaderValue::from_str(&connect_id)
@@ -738,14 +814,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn legacy_credentials_require_app_access_and_resource() {
+        let creds = VolcengineCredentials::legacy(
+            "app".into(),
+            "token".into(),
+            VolcengineCredentials::default_resource_id().into(),
+        );
+        assert!(!creds.missing_required_credentials());
+
+        let missing_access = VolcengineCredentials::legacy(
+            "app".into(),
+            "".into(),
+            VolcengineCredentials::default_resource_id().into(),
+        );
+        assert!(missing_access.missing_required_credentials());
+    }
+
+    #[test]
+    fn agent_plan_credentials_require_only_api_key() {
+        let creds = VolcengineCredentials::agent_plan("key".into(), "".into());
+        assert!(!creds.missing_required_credentials());
+
+        let missing_key = VolcengineCredentials::agent_plan("".into(), "".into());
+        assert!(missing_key.missing_required_credentials());
+    }
+
     #[tokio::test]
     async fn await_final_result_returns_error_when_final_frame_never_arrives() {
         let asr = VolcengineStreamingASR::new(
-            VolcengineCredentials {
-                app_id: "app".into(),
-                access_token: "token".into(),
-                resource_id: VolcengineCredentials::default_resource_id().into(),
-            },
+            VolcengineCredentials::legacy(
+                "app".into(),
+                "token".into(),
+                VolcengineCredentials::default_resource_id().into(),
+            ),
             Vec::new(),
         );
         let (tx, rx) = oneshot::channel();

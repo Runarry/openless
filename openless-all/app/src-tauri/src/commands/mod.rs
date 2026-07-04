@@ -289,6 +289,10 @@ mod tests {
         };
         assert!(!asr_configured_for_provider("whisper", &whisper_key_only));
         assert!(asr_configured_for_provider(
+            crate::asr::volcengine::AGENT_PLAN_PROVIDER_ID,
+            &whisper_key_only
+        ));
+        assert!(asr_configured_for_provider(
             crate::asr::bailian::PROVIDER_ID,
             &whisper_key_only
         ));

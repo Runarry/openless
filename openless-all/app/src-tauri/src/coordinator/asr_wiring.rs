@@ -107,6 +107,7 @@ pub(super) fn ensure_asr_credentials() -> Result<(), String> {
     if is_whisper_compatible_provider(&active_asr)
         || is_bailian_provider(&active_asr)
         || is_mimo_provider(&active_asr)
+        || is_volcengine_agent_plan_provider(&active_asr)
     {
         let api_key = CredentialsVault::get(CredentialAccount::AsrApiKey)
             .ok()
@@ -118,8 +119,7 @@ pub(super) fn ensure_asr_credentials() -> Result<(), String> {
         return Ok(());
     }
 
-    let creds = read_volc_credentials();
-    if creds.app_id.trim().is_empty() || creds.access_token.trim().is_empty() {
+    if read_volc_credentials().missing_required_credentials() {
         Err("请先在设置中填写火山引擎 ASR App Key 和 Access Key".to_string())
     } else {
         Ok(())
@@ -347,6 +347,10 @@ pub(super) fn is_mimo_provider(id: &str) -> bool {
     id == crate::asr::mimo::PROVIDER_ID
 }
 
+pub(super) fn is_volcengine_agent_plan_provider(id: &str) -> bool {
+    id == crate::asr::volcengine::AGENT_PLAN_PROVIDER_ID
+}
+
 pub(super) fn apply_chinese_script_preference(text: &str, pref: ChineseScriptPreference) -> String {
     if text.is_empty() {
         return String::new();
@@ -535,7 +539,7 @@ pub(super) async fn build_qa_asr_start(inner: &Arc<Inner>, active_asr: &str) -> 
         }
         ActiveAsrProviderKind::Volcengine => Ok(QaAsrStart::Volcengine {
             asr: Arc::new(VolcengineStreamingASR::new(
-                read_volc_credentials(),
+                read_volc_credentials_for_provider(active_asr),
                 enabled_hotwords(inner),
             )),
             bridge: Arc::new(DeferredAsrBridge::new()),

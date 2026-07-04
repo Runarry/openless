@@ -1518,7 +1518,7 @@ pub(super) async fn begin_session_as(
             .await?;
     } else {
         let hotwords = enabled_hotwords(inner);
-        let creds = read_volc_credentials();
+        let creds = read_volc_credentials_for_provider(&active_asr);
         let asr = Arc::new(VolcengineStreamingASR::new(creds, hotwords));
         let bridge = Arc::new(DeferredAsrBridge::new());
         let consumer: Arc<dyn crate::recorder::AudioConsumer> = bridge.clone();

@@ -1957,7 +1957,14 @@ fn read_bailian_credentials() -> BailianCredentials {
     }
 }
 
-fn read_volc_credentials() -> VolcengineCredentials {
+fn read_volc_credentials_for_provider(provider: &str) -> VolcengineCredentials {
+    if is_volcengine_agent_plan_provider(provider) {
+        return read_volc_agent_plan_credentials();
+    }
+    read_volc_legacy_credentials()
+}
+
+fn read_volc_legacy_credentials() -> VolcengineCredentials {
     let app_id = CredentialsVault::get(CredentialAccount::VolcengineAppKey)
         .ok()
         .flatten()
@@ -1971,11 +1978,24 @@ fn read_volc_credentials() -> VolcengineCredentials {
         .flatten()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| VolcengineCredentials::default_resource_id().to_string());
-    VolcengineCredentials {
-        app_id,
-        access_token,
-        resource_id,
-    }
+    VolcengineCredentials::legacy(app_id, access_token, resource_id)
+}
+
+fn read_volc_agent_plan_credentials() -> VolcengineCredentials {
+    let api_key = CredentialsVault::get(CredentialAccount::AsrApiKey)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let resource_id = CredentialsVault::get(CredentialAccount::VolcengineResourceId)
+        .ok()
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| VolcengineCredentials::default_resource_id().to_string());
+    VolcengineCredentials::agent_plan(api_key, resource_id)
+}
+
+fn read_volc_credentials() -> VolcengineCredentials {
+    read_volc_credentials_for_provider(crate::asr::volcengine::PROVIDER_ID)
 }
 
 fn enabled_hotwords(inner: &Arc<Inner>) -> Vec<DictionaryHotword> {
@@ -2268,6 +2288,9 @@ mod tests {
         assert!(!is_whisper_compatible_provider(
             crate::asr::mimo::PROVIDER_ID
         ));
+        assert!(!is_whisper_compatible_provider(
+            crate::asr::volcengine::AGENT_PLAN_PROVIDER_ID
+        ));
     }
 
     #[test]
@@ -2317,6 +2340,10 @@ mod tests {
         );
         assert_eq!(
             active_asr_provider_kind("volcengine"),
+            ActiveAsrProviderKind::Volcengine
+        );
+        assert_eq!(
+            active_asr_provider_kind(crate::asr::volcengine::AGENT_PLAN_PROVIDER_ID),
             ActiveAsrProviderKind::Volcengine
         );
     }

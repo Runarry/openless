@@ -154,6 +154,7 @@ const ASR_DEFAULT_RESOURCE_ID = 'volc.seedasr.sauc.duration';
 // `AsrPresetId` 定义在 settings/shared.tsx，LocalModelSection / ProvidersSection 共用同一份。
 const ASR_PRESETS: ReadonlyArray<{ id: AsrPresetId; nameKey: string; baseUrl: string; model: string }> = [
   { id: 'volcengine',   nameKey: 'asrVolcengine',   baseUrl: '',                                              model: ''                              },
+  { id: 'volcengine-agent-plan', nameKey: 'asrVolcengineAgentPlan', baseUrl: '',                              model: ''                              },
   { id: 'bailian',      nameKey: 'asrBailian',     baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference/', model: 'fun-asr-realtime'             },
   { id: 'siliconflow',  nameKey: 'asrSiliconflow',  baseUrl: 'https://api.siliconflow.cn/v1',                  model: 'FunAudioLLM/SenseVoiceSmall' },
   { id: 'zhipu',        nameKey: 'asrZhipu',        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',           model: 'glm-asr-2512'                },
@@ -480,6 +481,27 @@ export function ProvidersSection({ kind = 'all' }: ProvidersSectionProps = {}) {
               placeholder={ASR_DEFAULT_RESOURCE_ID} defaultValue={ASR_DEFAULT_RESOURCE_ID} />
             <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ol-ink-4)', lineHeight: 1.6 }}>
               {t('settings.providers.volcengineMappingNote')}
+            </div>
+          </>
+        ) : committedAsrProvider === 'volcengine-agent-plan' ? (
+          <>
+            <CredentialField
+              key={`${committedAsrProvider}:api_key`}
+              label={t('settings.providers.apiKeyLabel')}
+              account="asr.api_key"
+              mono
+              mask
+            />
+            <CredentialField
+              key={`${committedAsrProvider}:resource_id`}
+              label={t('settings.providers.volcengineResourceIdLabel')}
+              account="volcengine.resource_id"
+              mono
+              placeholder={ASR_DEFAULT_RESOURCE_ID}
+              defaultValue={ASR_DEFAULT_RESOURCE_ID}
+            />
+            <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ol-ink-4)', lineHeight: 1.6 }}>
+              {t('settings.providers.volcengineAgentPlanMappingNote')}
             </div>
           </>
         ) : committedAsrProvider === 'local-qwen3' || committedAsrProvider === 'foundry-local-whisper' || committedAsrProvider === 'sherpa-onnx-local' || committedAsrProvider === 'apple-speech' ? (

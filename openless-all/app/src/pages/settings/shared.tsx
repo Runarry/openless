@@ -179,6 +179,7 @@ export const inputStyle: CSSProperties = {
 // 拆成独立类型让 LocalModelSection / ProvidersSection 都能用同一份不互相依赖。
 export type AsrPresetId =
     | "volcengine"
+    | "volcengine-agent-plan"
     | "bailian"
     | "siliconflow"
     | "zhipu"
